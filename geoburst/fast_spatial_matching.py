@@ -3,7 +3,6 @@ import _fast_spatial_matching
 from .geometric_transforms import Transformation, AffineFeatureMatch, FeatureGeometryAffine
 
 
-
 class AffineMatch:
     def __init__(self, query_feature_index, query_keypoint):
         self.feature1 = FeatureGeometryAffine()
@@ -32,11 +31,7 @@ class FastSpatialMatching ():
     def __init__(self):
         self._impl = _fast_spatial_matching.PyFastSpatialMatching()
 
-    def perform_spatial_verification(self, matches, kp1, kp2):
-        """
-        get opencv style match and keypoints, run match
-        kp is x,y,a,b,c for each row
-        """
+    def _generate_match_obj_list(self, matches, kp1, kp2):
         affine_matches = []
         # TODO: handle multi match.
         # when one key points matches multiple key points. check data structure for this and fsm.
@@ -54,14 +49,26 @@ class FastSpatialMatching ():
             am.features2.append(feature2)
             am.word_ids.append(m.trainIdx) # pass dummy word_id. We may don't use value for FSM.
 
-            affine_matches.append(am)
+            affine_matches.append(am.get_object())
 
-        # TODO: check do we need sort by size of features2 (smaller first) for matches. for FSM
-        # print("num matches:", len(affine_matches))
-        match_list = affine_matches
-        match_obj_list = []
-        for m in affine_matches:
-            match_obj_list.append(m.get_object())
+        return affine_matches
+
+    def perform_spatial_verification(self, matches, kp1, kp2):
+        """
+        get opencv style match and keypoints, run match
+        kp is x,y,a,b,c for each row
+        """
+        match_obj_list = self._generate_match_obj_list(matches, kp1, kp2)
         
         best_num_inliers, transform, inliers = self._impl.PerformSpatialVerification(match_obj_list)
         return transform, inliers
+
+    def perform_multiple_model_fitting(self, matches, kp1, kp2):
+        """
+        get opencv style match and keypoints, run match
+        kp is x,y,a,b,c for each row
+        """
+        match_obj_list = self._generate_match_obj_list(matches, kp1, kp2)
+
+        num_inliers, inliers = self._impl.PerformMultipleModelFitting(match_obj_list)
+        return inliers

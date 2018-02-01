@@ -129,6 +129,64 @@ class FastSpatialMatching {
     return best_num_inliers;
   }
 
+  // In MHIC algorithm, first part of geometric consistency is fitting multiple models with FSM idea.
+  // After that, union of inlier correspondences will be fed into next step with RANSAC for checking 
+  // global consistency. 
+  // This funtion returns the union of inliers. 
+  int PerformMultipleModelFitting(
+      const std::vector<FeatureMatch>& matches,
+      std::vector<std::pair<int, int> >* union_inlier_ids) const {
+    TransformationType transformation_provider;
+
+    union_inlier_ids->clear();
+
+    int num_matches = static_cast<int>(matches.size());
+    std::vector<bool> set_check(num_matches, false);
+
+    // Exhaustively generates all possible transformations.
+    Transformation tmp_transform;
+    std::vector<std::pair<int, int> > tmp_inlier_ids;
+    for (int i = 0; i < num_matches; ++i) {
+      size_t num_matches_image_2 = matches[i].features2_.size();
+      for (size_t m = 0; m < num_matches_image_2; ++m) {
+        // Creates a transformation hypothesis.
+        if (!transformation_provider.ComputeTransform(matches[i].feature1_,
+                                                      matches[i].features2_[m],
+                                                      &(tmp_transform.A_12),
+                                                      &(tmp_transform.t_12))) {
+          continue;
+        }
+
+        if (!transformation_provider.ComputeTransform(matches[i].features2_[m],
+                                                      matches[i].feature1_,
+                                                      &(tmp_transform.A_21),
+                                                      &(tmp_transform.t_21))) {
+          continue;;
+        }
+
+        int num_inliers = EvaluateHypothesis(matches, transfer_error_threshold_,
+                                             scale_change_threshold_,
+                                             tmp_transform, &tmp_inlier_ids);
+
+        Eigen::Matrix<float, 2, 3> M;
+        M.block<2, 2>(0, 0) = tmp_transform.A_12;
+        M.col(2) = tmp_transform.t_12;
+
+        if (num_inliers >= 3) {
+          LocalOptimization(matches, &tmp_inlier_ids, &tmp_transform);
+          for(int i=0; i<tmp_inlier_ids.size();i++){
+            auto idx = tmp_inlier_ids[i].first;
+            if(set_check[idx] == false){
+              set_check[idx] = true;
+              union_inlier_ids->push_back(std::make_pair(idx, tmp_inlier_ids[i].second));
+            }
+          }
+        }
+      }
+    }
+    return static_cast<int>(union_inlier_ids->size());
+  }
+
  private:
   // Runs local optimization as described in
   // Lebeda, Matas, Chum. Fixing the Locally Optimized RANSAC. BMVC 2012.

@@ -38,10 +38,21 @@ class PyAffineFeatureMatch : public AffineFeatureMatch {
 class PyFastSpatialMatching : public FastSpatialMatching<PyAffineFeatureMatch, FeatureGeometryAffine, Similarity5DOF> {
     public:
         auto pyPerformSpatialVerification(const std::vector<PyAffineFeatureMatch>& matches) { 
+            // /* Acquire GIL before calling Python code */
+            // py::gil_scoped_acquire acquire;
+
             std::vector<std::pair<int, int> > inlier_ids;
             Transformation transform;                    
             int best_inliner_num = PyFastSpatialMatching::PerformSpatialVerification(matches, &transform, &inlier_ids); 
             return std::make_tuple(best_inliner_num, transform, inlier_ids);
+        }
+        auto pyPerformMultipleModelFitting(const std::vector<PyAffineFeatureMatch>& matches) { 
+            /* Acquire GIL before calling Python code */
+            py::gil_scoped_acquire acquire;
+
+            std::vector<std::pair<int, int> > inlier_ids;
+            int inliner_num = PyFastSpatialMatching::PerformMultipleModelFitting(matches, &inlier_ids); 
+            return std::make_tuple(inliner_num, inlier_ids);
         }
 };
 
@@ -74,7 +85,9 @@ PYBIND11_MODULE(_fast_spatial_matching, m) {
         .def_readwrite("A_21", &Transformation::A_21)
         .def_readwrite("t_21", &Transformation::t_21);
 
+    /* Release GIL before calling into (potentially long-running) C++ code */
     py::class_<PyFastSpatialMatching>(m, "PyFastSpatialMatching")
-            .def(py::init<> ())
-            .def("PerformSpatialVerification", &PyFastSpatialMatching::pyPerformSpatialVerification);
+        .def(py::init<> ())
+        .def("PerformSpatialVerification", &PyFastSpatialMatching::pyPerformSpatialVerification/*, py::call_guard<py::gil_scoped_release>()*/)
+        .def("PerformMultipleModelFitting", &PyFastSpatialMatching::pyPerformMultipleModelFitting, py::call_guard<py::gil_scoped_release>());
 }

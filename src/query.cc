@@ -199,26 +199,6 @@ int main (int argc, char **argv)
   int num_db = static_cast<int>(db_list.size());
   std::cout << " Found " << num_db << " db images in " << argv[2] << std::endl;
 
-  // Loads the 2D positions for the database images.
-  Eigen::Matrix2Xd db_pos(2, num_db);
-  {
-    std::ifstream ifs(argv[6], std::ios::in);
-    if (!ifs.is_open()) {
-      std::cerr << "ERROR: Cannot load the db positions from " << argv[9]
-                << std::endl;
-      return -1;
-    }
-
-    for (int i = 0; i < num_db; ++i) {
-      double x = 0.0;
-      double y = 0.0;
-      ifs >> x >> y;
-      db_pos(0, i) = x;
-      db_pos(1, i) = y;
-    }
-    ifs.close();
-  }
-
   ////
   // Opens the files for output.
   std::string output_prefix(argv[4]);
@@ -449,11 +429,38 @@ int main (int argc, char **argv)
     std::stable_sort(db_inlier_ids_pairs.begin(), db_inlier_ids_pairs.end(),
                      CompareBasedOnNumberOfInliers<int, int>);
 
-    std::vector<std::pair<double, int> > ranking_inter_place_burstiness;
-    std::vector<std::pair<double, int> > ranking_inter_place_pop_burstiness;
-    geometric_burstiness::reranking::ReRankingInterPlaceGeometricBurstiness(
-        db_inlier_ids_pairs, num_features, db_pos, squared_gt_inlier_dist,
-        &ranking_inter_place_burstiness, &ranking_inter_place_pop_burstiness);
+
+
+
+
+    // Loads the 2D positions for the database images.
+    bool is_pos_available = false;
+    Eigen::Matrix2Xd db_pos(2, num_db);
+    {
+      std::ifstream ifs(argv[6], std::ios::in);
+      if (!ifs.is_open()) {
+        std::cerr << "ERROR: Cannot load the db positions from " << argv[9]
+                  << std::endl;
+      }
+      else{
+        is_pos_available = true;
+        for (int i = 0; i < num_db; ++i) {
+          double x = 0.0;
+          double y = 0.0;
+          ifs >> x >> y;
+          db_pos(0, i) = x;
+          db_pos(1, i) = y;
+        }
+        ifs.close();
+      }
+    }
+    if (is_pos_available){
+      std::vector<std::pair<double, int> > ranking_inter_place_burstiness;
+      std::vector<std::pair<double, int> > ranking_inter_place_pop_burstiness;
+      geometric_burstiness::reranking::ReRankingInterPlaceGeometricBurstiness(
+          db_inlier_ids_pairs, num_features, db_pos, squared_gt_inlier_dist,
+          &ranking_inter_place_burstiness, &ranking_inter_place_pop_burstiness);
+    }
 
     if (!ranking_inlier_count.empty()) {
       std::cout << "  Most relevant image according to " << std::endl
@@ -461,11 +468,13 @@ int main (int argc, char **argv)
                 << std::endl << "    effective inlier count: "
                 << ranking_effective_inlier_count[0].second << std::endl
                 << "    inter-image burstiness: "
-                << ranking_inter_image_burstiness[0].second << std::endl
-                << "    inter-place burstiness: "
-                << ranking_inter_place_burstiness[0].second << std::endl
-                << "    inter-place + popularity burstiness: "
-                << ranking_inter_place_pop_burstiness[0].second << std::endl;
+                << ranking_inter_image_burstiness[0].second << std::endl;
+      if (is_pos_available){
+        std::cout << "    inter-place burstiness: "
+                  << ranking_inter_place_burstiness[0].second << std::endl
+                  << "    inter-place + popularity burstiness: "
+                  << ranking_inter_place_pop_burstiness[0].second << std::endl;
+      }
     }
 
     for (size_t r = 0; r < ranking_inlier_count.size(); ++r) {
@@ -488,18 +497,20 @@ int main (int argc, char **argv)
                       << std::endl;
     }
 
-    for (size_t r = 0; r < ranking_inter_place_burstiness.size(); ++r) {
-      ofs_inter_place << query_list[i] << "jpg "
-                      << db_list[ranking_inter_place_burstiness[r].second]
-                      << " " << ranking_inter_place_burstiness[r].first
-                      << std::endl;
-    }
+    if (is_pos_available){
+      for (size_t r = 0; r < ranking_inter_place_burstiness.size(); ++r) {
+        ofs_inter_place << query_list[i] << "jpg "
+                        << db_list[ranking_inter_place_burstiness[r].second]
+                        << " " << ranking_inter_place_burstiness[r].first
+                        << std::endl;
+      }
 
-    for (size_t r = 0; r < ranking_inter_place_pop_burstiness.size(); ++r) {
-      ofs_inter_place_pop << query_list[i] << "jpg "
-                          << db_list[ranking_inter_place_pop_burstiness[r].second]
-                          << " " << ranking_inter_place_pop_burstiness[r].first
-                          << std::endl;
+      for (size_t r = 0; r < ranking_inter_place_pop_burstiness.size(); ++r) {
+        ofs_inter_place_pop << query_list[i] << "jpg "
+                            << db_list[ranking_inter_place_pop_burstiness[r].second]
+                            << " " << ranking_inter_place_pop_burstiness[r].first
+                            << std::endl;
+      }
     }
   }
 
@@ -507,8 +518,10 @@ int main (int argc, char **argv)
   ofs_inlier_count.close();
   ofs_eff_inlier_count.close();
   ofs_inter_image.close();
-  ofs_inter_place.close();
-  ofs_inter_place_pop.close();
+  if (is_pos_available) {
+    ofs_inter_place.close();
+    ofs_inter_place_pop.close();
+  }
 
   return 0;
 }
